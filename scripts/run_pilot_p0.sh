@@ -7,6 +7,9 @@ CFG="${CFG:-configs/r1_qwen_7b.yaml}"
 MODEL_NAME="$(python -c "from lib.config import load_cfg; print(load_cfg('${CFG}').model.name)")"
 LENS="results/lenses/${MODEL_NAME}/tuned_lens.pt"
 
+echo "[P0] downloading datasets (AIME24 + MATH500)"
+python -m scripts.download_data --datasets aime24 math500
+
 echo "[P0] tuned-lens training"
 python -m scripts.train_tuned_lens --cfg "${CFG}"
 
