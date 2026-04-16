@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+
+.DS_Store
+.idea/
+.vscode/
+
+# large / generated artifacts — populated by /run-experiment on the GPU server
+results/
+data/
+wandb/
+*.pt
+*.safetensors
+*.bin
+*.log
+
+# secrets
+.env
+*.key
+credentials*.json

@@ -1,0 +1,15 @@
+torch>=2.3
+transformers>=4.46
+accelerate>=0.34
+tuned-lens>=0.2.0
+datasets>=3.0
+numpy>=1.26
+pandas>=2.2
+scipy>=1.13
+scikit-learn>=1.5
+matplotlib>=3.8
+seaborn>=0.13
+tqdm>=4.66
+pyyaml>=6.0
+vllm>=0.6; sys_platform == "linux"
+wandb>=0.18
