@@ -1,0 +1,67 @@
+{
+  "n": 30,
+  "cot_correct_rate": 0.6,
+  "correlations": {
+    "spearman_sigma_length": {
+      "stat": 0.09543937708565071,
+      "p": 0.6158936414251933
+    },
+    "spearman_mu_length": {
+      "stat": null,
+      "p": null
+    },
+    "spearman_delta_length": {
+      "stat": 0.3110855084191276,
+      "p": 0.09426914703651273
+    },
+    "spearman_directmatch_length": {
+      "stat": 0.16090629745816945,
+      "p": 0.39564408259742656
+    },
+    "pearson_sigma_length": {
+      "stat": 0.0949804921437013,
+      "p": 0.6175994628848529
+    },
+    "pearson_mu_length": {
+      "stat": null,
+      "p": null
+    }
+  },
+  "regression_r2": {
+    "sigma": 0.00902129388785955,
+    "sigma_delta": 0.0831800749056002,
+    "sigma_delta_kappa": 0.13473246008461648
+  },
+  "decomposition": {
+    "tau": 0.3,
+    "populations": {
+      "intuition": {
+        "n": 0,
+        "mean_length": null,
+        "median_length": null,
+        "mean_correct": null
+      },
+      "prejudice": {
+        "n": 3,
+        "mean_length": 12353.0,
+        "median_length": 15097.0,
+        "mean_correct": 0.6666666666666666
+      },
+      "unbiased": {
+        "n": 27,
+        "mean_length": 13119.777777777777,
+        "median_length": 12550.0,
+        "mean_correct": 0.5925925925925926
+      }
+    },
+    "prejudice_to_intuition_length_ratio": null
+  },
+  "pre_registered": {
+    "P1_delta_spearman_sigma_minus_mu": null,
+    "P1_pass": false,
+    "P2_delta_R2": 0.07415878101774065,
+    "P2_pass": true,
+    "P3_ratio_prejudice_over_intuition": null,
+    "P3_pass": false
+  }
+}

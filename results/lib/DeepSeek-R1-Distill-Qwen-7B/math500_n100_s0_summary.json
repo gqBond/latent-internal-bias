@@ -1,0 +1,67 @@
+{
+  "n": 100,
+  "cot_correct_rate": 0.6,
+  "correlations": {
+    "spearman_sigma_length": {
+      "stat": -0.17606960696069604,
+      "p": 0.07972628660715603
+    },
+    "spearman_mu_length": {
+      "stat": -0.11364842941983157,
+      "p": 0.26022987829208166
+    },
+    "spearman_delta_length": {
+      "stat": 0.23264769591361234,
+      "p": 0.019843973901408053
+    },
+    "spearman_directmatch_length": {
+      "stat": 0.0009449584316259062,
+      "p": 0.9925552224741778
+    },
+    "pearson_sigma_length": {
+      "stat": -0.1912547850034995,
+      "p": 0.0566323426254224
+    },
+    "pearson_mu_length": {
+      "stat": 0.01669626220052595,
+      "p": 0.8690423980702294
+    }
+  },
+  "regression_r2": {
+    "sigma": 0.036578392786734804,
+    "sigma_delta": 0.047918824945754945,
+    "sigma_delta_kappa": 0.04868104219307712
+  },
+  "decomposition": {
+    "tau": 0.2,
+    "populations": {
+      "intuition": {
+        "n": 5,
+        "mean_length": 4962.0,
+        "median_length": 2752.0,
+        "mean_correct": 0.8
+      },
+      "prejudice": {
+        "n": 86,
+        "mean_length": 7070.918604651163,
+        "median_length": 3639.0,
+        "mean_correct": 0.5697674418604651
+      },
+      "unbiased": {
+        "n": 9,
+        "mean_length": 7421.222222222223,
+        "median_length": 3190.0,
+        "mean_correct": 0.7777777777777778
+      }
+    },
+    "prejudice_to_intuition_length_ratio": 1.4250138260078926
+  },
+  "pre_registered": {
+    "P1_delta_spearman_sigma_minus_mu": -0.06242117754086447,
+    "P1_pass": false,
+    "P2_delta_R2": 0.011340432159020142,
+    "P2_pass": false,
+    "P3_ratio_prejudice_over_intuition": 1.4250138260078926,
+    "P3_pass": false
+  }
+}

@@ -78,3 +78,20 @@ def canonicalize_mcq(text: str) -> str | None:
         return m.group(1)
     m = re.search(r"\b([A-E])\b", text)
     return m.group(1) if m else None
+
+
+def canonicalize_to_vocab(answer: str | None, labels: list[str]) -> str:
+    """Project a full answer string onto the single-token vocabulary `labels`.
+
+    The LIB vocab is at first-token granularity (one digit for integer, one letter
+    for MCQ). To check `argmax π_L == answer`, we have to compare at the same
+    granularity — otherwise a multi-digit answer like "143" can never equal a
+    digit label like "1". Returns "" when no overlap.
+    """
+    if not answer:
+        return ""
+    s = str(answer).strip().lstrip("-").lstrip(" ")
+    for c in s:
+        if c in labels:
+            return c
+    return ""

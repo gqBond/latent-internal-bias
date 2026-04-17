@@ -21,6 +21,8 @@ from typing import Dict, List
 
 import torch
 
+from lib.answer_vocab import canonicalize_to_vocab
+
 
 @dataclass
 class LIBScalars:
@@ -30,6 +32,8 @@ class LIBScalars:
     delta: float
     kappa: float
     bias_argmax_label: str
+    final_canon: str
+    correct_canon: str
 
 
 def compute_lib(
@@ -46,8 +50,10 @@ def compute_lib(
     label_top = labels[topL]
 
     sigma = float(piL[topL].item())
-    mu = int(label_top == str(final_answer))
-    mu_correct = int(label_top == str(correct_answer))
+    final_canon = canonicalize_to_vocab(final_answer, labels)
+    correct_canon = canonicalize_to_vocab(correct_answer, labels)
+    mu = int(label_top == final_canon) if final_canon else 0
+    mu_correct = int(label_top == correct_canon) if correct_canon else 0
 
     delta_layer: int | None = None
     for ℓ in layers_sorted:
@@ -72,4 +78,6 @@ def compute_lib(
         delta=delta,
         kappa=kappa,
         bias_argmax_label=label_top,
+        final_canon=final_canon,
+        correct_canon=correct_canon,
     )

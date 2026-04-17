@@ -19,12 +19,38 @@ import numpy as np
 from scipy.stats import pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 
+from lib.answer_vocab import canonicalize_to_vocab
 from lib.config import load_cfg
 from lib.io_utils import dump_json, read_jsonl
 
 
 def _pairs(rows: List[Dict], key: str) -> np.ndarray:
     return np.array([r[key] for r in rows], dtype=float)
+
+
+def _recompute_match(rows: List[Dict]) -> int:
+    """Recompute mu, mu_correct in-place by canonicalizing the multi-char
+    final_answer/correct_answer onto the single-token labels vocab.
+
+    Returns the number of rows whose mu or mu_correct changed — sanity telemetry
+    for the P3 None issue seen before the canonicalization fix."""
+    changed = 0
+    for r in rows:
+        labels = r.get("labels")
+        if not labels:
+            continue
+        bias = r.get("bias_argmax") or ""
+        f_can = canonicalize_to_vocab(r.get("cot_answer") or "", labels)
+        c_can = canonicalize_to_vocab(r.get("correct_answer") or "", labels)
+        new_mu = int(bias == f_can) if f_can else 0
+        new_mc = int(bias == c_can) if c_can else 0
+        if new_mu != r.get("mu") or new_mc != r.get("mu_correct"):
+            changed += 1
+        r["mu"] = new_mu
+        r["mu_correct"] = new_mc
+        r["final_canon"] = f_can
+        r["correct_canon"] = c_can
+    return changed
 
 
 def _r2(X: np.ndarray, y: np.ndarray) -> float:
@@ -49,12 +75,23 @@ def main() -> None:
     ap.add_argument("--lib", required=True)
     ap.add_argument("--cfg", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--no-recompute-match", action="store_true",
+                    help="skip canonicalization-based recomputation of mu/mu_correct")
+    ap.add_argument("--tau", type=float, default=None,
+                    help="override decomposition.tau (default: cfg value)")
     args = ap.parse_args()
 
     cfg = load_cfg(args.cfg)
     rows = read_jsonl(args.lib)
     if not rows:
         raise RuntimeError(f"empty LIB file: {args.lib}")
+
+    if not args.no_recompute_match:
+        changed = _recompute_match(rows)
+        if changed:
+            print(f"recompute_match: updated mu/mu_correct on {changed}/{len(rows)} rows")
+
+    tau = args.tau if args.tau is not None else cfg.decomposition.tau
 
     length = _pairs(rows, "cot_length")
     sigma = _pairs(rows, "sigma")
@@ -80,7 +117,7 @@ def main() -> None:
     r2_sigma_delta = _r2(np.stack([sigma, delta], axis=1), length)
     r2_sigma_delta_kappa = _r2(np.stack([sigma, delta, kappa], axis=1), length)
 
-    pops = _decomp(rows, cfg.decomposition.tau)
+    pops = _decomp(rows, tau)
     pop_stats = {
         name: {
             "n": len(rs),
@@ -127,7 +164,7 @@ def main() -> None:
             "sigma_delta_kappa": r2_sigma_delta_kappa,
         },
         "decomposition": {
-            "tau": cfg.decomposition.tau,
+            "tau": tau,
             "populations": pop_stats,
             "prejudice_to_intuition_length_ratio": ratio,
         },
