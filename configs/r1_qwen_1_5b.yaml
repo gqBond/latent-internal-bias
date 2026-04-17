@@ -1,0 +1,42 @@
+model:
+  name: DeepSeek-R1-Distill-Qwen-1.5B
+  hf_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+  dtype: bfloat16
+  num_layers: 28
+  lens_layers: [7, 14, 18, 22, 27]
+  pre_think_tag: "<think>\n"
+  think_close_tag: "</think>"
+  max_position_embeddings: 65536
+  rope_scaling:
+    type: yarn
+    factor: 4.0
+    original_max_position_embeddings: 16384
+
+generation:
+  max_new_tokens: 32768
+  temperature: 0.6
+  top_p: 0.95
+  seed: 0
+
+direct_answer:
+  max_new_tokens: 64
+  num_samples: 16
+  temperature: 0.7
+  top_p: 0.95
+
+lens:
+  type: tuned
+  train_data: openwebmath
+  train_steps: 200
+  train_batch_size: 8
+  train_lr: 1.0e-3
+
+decomposition:
+  tau: 0.6
+  boundary_tokens: ["Wait", "Alternatively", "Hmm", "But", "However"]
+
+paths:
+  lens_dir: results/lenses
+  lib_dir:  results/lib
+  cot_dir:  results/cot
+  direct_dir: results/direct
