@@ -32,7 +32,7 @@ lens:
   train_lr: 1.0e-3
 
 decomposition:
-  tau: 0.6
+  tau: 0.20                 # strength threshold for "committed" (default matched to Round-1 sigma range)
   boundary_tokens: ["Wait", "Alternatively", "Hmm", "But", "However"]
 
 paths:

@@ -13,15 +13,24 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 import numpy as np
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr, spearmanr, rankdata
 from sklearn.linear_model import LinearRegression
 
 from lib.answer_vocab import canonicalize_to_vocab
 from lib.config import load_cfg
 from lib.io_utils import dump_json, read_jsonl
+
+
+# Reframed population names (descriptive, per Round-1 reviewer feedback).
+# Old name → new name: intuition → early_correct, prejudice → early_incorrect, unbiased → low_commitment.
+POP_RENAME = {
+    "intuition": "early_correct",
+    "prejudice": "early_incorrect",
+    "unbiased": "low_commitment",
+}
 
 
 def _pairs(rows: List[Dict], key: str) -> np.ndarray:
@@ -56,6 +65,62 @@ def _recompute_match(rows: List[Dict]) -> int:
 def _r2(X: np.ndarray, y: np.ndarray) -> float:
     reg = LinearRegression().fit(X, y)
     return float(reg.score(X, y))
+
+
+def _partial_spearman(y: np.ndarray, x: np.ndarray, z: np.ndarray) -> Tuple[float, float]:
+    """Partial Spearman correlation between y and x controlling for columns of z.
+
+    Implemented as Pearson correlation of rank-residuals after regressing rank(y) and
+    rank(x) on rank(z). Returns (stat, p) or (NaN, NaN) if undefined.
+    """
+    try:
+        y_r = rankdata(y)
+        x_r = rankdata(x)
+        z_r = np.stack([rankdata(z[:, i]) for i in range(z.shape[1])], axis=1)
+        y_res = y_r - LinearRegression().fit(z_r, y_r).predict(z_r)
+        x_res = x_r - LinearRegression().fit(z_r, x_r).predict(z_r)
+        stat, p = pearsonr(y_res, x_res)
+        return float(stat), float(p)
+    except Exception:
+        return float("nan"), float("nan")
+
+
+def _bootstrap_ratio(rows: List[Dict], tau: float, n_boot: int = 2000,
+                     rng: np.random.Generator | None = None) -> Dict:
+    """Bootstrap CI for prejudice/intuition length ratio at threshold tau.
+
+    Samples rows with replacement n_boot times, recomputes decomposition + ratio per
+    bootstrap. Returns central estimate, 95% CI, and fraction of bootstrap samples
+    where both populations were non-empty (otherwise ratio undefined).
+    """
+    if rng is None:
+        rng = np.random.default_rng(0)
+    N = len(rows)
+    ratios: List[float] = []
+    n_defined = 0
+    for _ in range(n_boot):
+        idx = rng.integers(0, N, size=N)
+        sample = [rows[i] for i in idx]
+        pops = _decomp(sample, tau)
+        if pops["intuition"] and pops["prejudice"]:
+            mi = float(np.mean([r["cot_length"] for r in pops["intuition"]]))
+            mp = float(np.mean([r["cot_length"] for r in pops["prejudice"]]))
+            if mi > 0:
+                ratios.append(mp / mi)
+                n_defined += 1
+    if not ratios:
+        return {"tau": tau, "n_boot": n_boot, "defined_frac": 0.0,
+                "mean": None, "ci_low": None, "ci_high": None}
+    arr = np.asarray(ratios)
+    return {
+        "tau": tau,
+        "n_boot": n_boot,
+        "defined_frac": n_defined / n_boot,
+        "mean": float(np.mean(arr)),
+        "median": float(np.median(arr)),
+        "ci_low": float(np.quantile(arr, 0.025)),
+        "ci_high": float(np.quantile(arr, 0.975)),
+    }
 
 
 def _decomp(rows: List[Dict], tau: float) -> Dict[str, List[Dict]]:
@@ -119,7 +184,7 @@ def main() -> None:
 
     pops = _decomp(rows, tau)
     pop_stats = {
-        name: {
+        POP_RENAME[name]: {
             "n": len(rs),
             "mean_length": float(np.mean([r["cot_length"] for r in rs])) if rs else None,
             "median_length": float(np.median([r["cot_length"] for r in rs])) if rs else None,
@@ -129,7 +194,20 @@ def main() -> None:
     }
     ratio = None
     if pops["intuition"] and pops["prejudice"]:
-        ratio = pop_stats["prejudice"]["mean_length"] / pop_stats["intuition"]["mean_length"]
+        ratio = (pop_stats["early_incorrect"]["mean_length"]
+                 / pop_stats["early_correct"]["mean_length"])
+
+    # Round-1 reviewer asked for stability: bootstrap CI + τ sweep.
+    tau_sweep = {}
+    for t in [0.15, 0.20, 0.25, 0.30]:
+        tau_sweep[f"tau_{t:.2f}"] = _bootstrap_ratio(rows, t)
+
+    # Partial correlations: does δ predict length after controlling for correctness,
+    # κ (uncertainty), and σ (commitment strength)?
+    correct = np.array([r["cot_correct"] for r in rows], dtype=float)
+    z_cols = np.stack([correct, kappa, sigma], axis=1)
+    pc_delta = _partial_spearman(length, delta, z_cols)
+    pc_sigma = _partial_spearman(length, sigma, np.stack([correct, kappa], axis=1))
 
     def _pack(x):
         s, p = x
@@ -166,7 +244,16 @@ def main() -> None:
         "decomposition": {
             "tau": tau,
             "populations": pop_stats,
-            "prejudice_to_intuition_length_ratio": ratio,
+            "early_incorrect_over_early_correct_length_ratio": ratio,
+            "bootstrap_ratio_tau_sweep": tau_sweep,
+        },
+        "partial_correlations": {
+            "spearman_delta_length_given_correct_kappa_sigma": {
+                "stat": pc_delta[0], "p": pc_delta[1],
+            },
+            "spearman_sigma_length_given_correct_kappa": {
+                "stat": pc_sigma[0], "p": pc_sigma[1],
+            },
         },
         "pre_registered": preregistered,
     }

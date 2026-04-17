@@ -106,4 +106,10 @@
   },
   "pre_registered": {
     "P1_delta_spearman_sigma_minus_mu": -0.06242117754086447,
-    "P1_pass": 
+    "P1_pass": false,
+    "P2_delta_R2": 0.011340432159020142,
+    "P2_pass": false,
+    "P3_ratio_prejudice_over_intuition": 1.4250138260078926,
+    "P3_pass": false
+  }
+}

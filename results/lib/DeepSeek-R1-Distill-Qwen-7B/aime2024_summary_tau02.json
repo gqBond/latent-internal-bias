@@ -33,28 +33,28 @@
     "sigma_delta_kappa": 0.13473246008461648
   },
   "decomposition": {
-    "tau": 0.3,
+    "tau": 0.2,
     "populations": {
       "early_correct": {
+        "n": 1,
+        "mean_length": 28040.0,
+        "median_length": 28040.0,
+        "mean_correct": 0.0
+      },
+      "early_incorrect": {
+        "n": 29,
+        "mean_length": 12525.965517241379,
+        "median_length": 12550.0,
+        "mean_correct": 0.6206896551724138
+      },
+      "low_commitment": {
         "n": 0,
         "mean_length": null,
         "median_length": null,
         "mean_correct": null
-      },
-      "early_incorrect": {
-        "n": 3,
-        "mean_length": 12353.0,
-        "median_length": 15097.0,
-        "mean_correct": 0.6666666666666666
-      },
-      "low_commitment": {
-        "n": 27,
-        "mean_length": 13119.777777777777,
-        "median_length": 12550.0,
-        "mean_correct": 0.5925925925925926
       }
     },
-    "early_incorrect_over_early_correct_length_ratio": null,
+    "early_incorrect_over_early_correct_length_ratio": 0.4467177431255841,
     "bootstrap_ratio_tau_sweep": {
       "tau_0.15": {
         "tau": 0.15,
@@ -107,7 +107,7 @@
     "P1_pass": false,
     "P2_delta_R2": 0.07415878101774065,
     "P2_pass": true,
-    "P3_ratio_prejudice_over_intuition": null,
+    "P3_ratio_prejudice_over_intuition": 0.4467177431255841,
     "P3_pass": false
   }
 }

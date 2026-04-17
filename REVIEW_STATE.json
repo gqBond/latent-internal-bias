@@ -1,0 +1,20 @@
+{
+  "round": 1,
+  "threadId": "019d9ca9-b384-7501-88c9-dc254b3c17eb",
+  "status": "in_progress",
+  "last_score": 3.0,
+  "last_verdict": "not ready",
+  "pending_experiments": [
+    "tuned_lens_training_7B",
+    "scale_replication_1_5B",
+    "scale_replication_14B",
+    "mcq_benchmark_knowlogic"
+  ],
+  "local_fixes_pending": [
+    "partial_correlation_delta_length",
+    "bootstrap_p3_ratio",
+    "rename_populations",
+    "reframe_proposal_around_delta"
+  ],
+  "timestamp": "2026-04-16T00:00:00"
+}

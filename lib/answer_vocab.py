@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import TYPE_CHECKING, List, Sequence
 
-import torch
-from transformers import PreTrainedTokenizerBase
+if TYPE_CHECKING:
+    import torch
+    from transformers import PreTrainedTokenizerBase
 
 
 MCQ_LETTERS = ["A", "B", "C", "D", "E"]
@@ -21,24 +22,25 @@ class AnswerVocab:
     labels:    human-readable strings aligned to token_ids.
     """
 
-    token_ids: torch.LongTensor
+    token_ids: "torch.LongTensor"
     labels: List[str]
 
 
-def _first_token_id(tok: PreTrainedTokenizerBase, s: str) -> int:
+def _first_token_id(tok: "PreTrainedTokenizerBase", s: str) -> int:
     ids = tok.encode(s, add_special_tokens=False)
     assert len(ids) >= 1, f"empty encoding for {s!r}"
     return ids[0]
 
 
-def mcq_vocab(tok: PreTrainedTokenizerBase, num_choices: int = 4) -> AnswerVocab:
+def mcq_vocab(tok: "PreTrainedTokenizerBase", num_choices: int = 4) -> AnswerVocab:
+    import torch
     letters = MCQ_LETTERS[:num_choices]
     ids = [_first_token_id(tok, " " + l) for l in letters]
     return AnswerVocab(torch.tensor(ids, dtype=torch.long), letters)
 
 
 def integer_vocab(
-    tok: PreTrainedTokenizerBase,
+    tok: "PreTrainedTokenizerBase",
     direct_answers: Sequence[str],
     max_candidates: int = 10,
 ) -> AnswerVocab:
@@ -56,6 +58,7 @@ def integer_vocab(
     if len(uniq) < 3:
         uniq = INT_DIGITS
     uniq = uniq[:max_candidates]
+    import torch
     ids = [_first_token_id(tok, u) for u in uniq]
     return AnswerVocab(torch.tensor(ids, dtype=torch.long), uniq)
 

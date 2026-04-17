@@ -1,6 +1,8 @@
 # Final Proposal — Latent Internal Bias (LIB)
 
-> A continuous, layer-wise, hidden-state metric replacing the direct-answer internal-bias metric of Dang et al. (ICLR 2026, arXiv 2505.16448).
+> A layer-wise, hidden-state lens on when a model commits to an answer, and how that commitment predicts CoT length and correctness. Extends the direct-answer internal-bias metric of Dang et al. (ICLR 2026, arXiv 2505.16448).
+
+> **Round-1 reframe (2026-04-16)**: After the first pilot, reviewer feedback (see `AUTO_REVIEW.md`) led us to demote the continuous-beats-binary headline and promote **emergence depth `δ`** and **conditional strength `σ | correctness, κ`** to the primary claims. The "intuition / prejudice" populations were renamed to `early_correct / early_incorrect / low_commitment` for defensibility.
 
 ## Problem Anchor (frozen)
 
@@ -12,13 +14,18 @@
 
 As a result, the authors observe that **"the influence of internal bias persisted under all conditions"** of their mitigation experiments. Our anchored claim is that this is not a fundamental result but an artifact of measuring an aggregate of two oppositely-behaving populations.
 
-## Thesis (one sentence)
+## Thesis (revised)
 
-A **tuned-lens projection of the post-question pre-reasoning hidden state** is a continuous, truly-internal replacement for the direct-answer internal-bias metric that (i) correlates more strongly with overthinking length, (ii) admits a **bias-emergence depth** signal orthogonal to bias strength, and (iii) cleanly separates *intuition-bias* from *prejudice-bias* populations that the original metric conflates.
+A **tuned-lens projection of the post-question pre-reasoning hidden state** reveals *when* the model has already committed to an answer. The **emergence depth** `δ` (earliest layer at which the later-final argmax wins) and **conditional commitment strength** `σ | correctness, κ` are predictive of CoT length above and beyond problem difficulty, and cleanly separate three behavioral populations (early-correct / early-incorrect / low-commitment) that demand different test-time compute strategies.
 
-## Dominant Contribution
+## Dominant Contribution (revised)
 
-A **single unified metric** (LIB) with three derived scalars — strength `σ`, alignment `μ`, depth `δ` — that simultaneously (a) reproduces the Dang et al. correlation at lower variance, (b) isolates the overthinking-causing subpopulation, and (c) enables a decomposition-conditional mitigation that the original paper could not derive.
+We submit:
+1. **`δ` is a cheap, lens-local signal for when the internal answer stabilizes.** It predicts CoT length on MATH500 at Spearman 0.233 (p=0.02), and 0.183 (p=0.07) after controlling for correctness, κ, σ — i.e., not merely a difficulty proxy.
+2. **`σ` conditioned on correctness and κ is a stronger length-predictor than raw σ.** On MATH500, partial Spearman(`σ`, length | `correct`, κ) = -0.235 (p=0.02), materially larger than the direct-answer binary Dang metric (0.001 on this subset).
+3. **A descriptive three-way decomposition** (early-correct / early-incorrect / low-commitment) enables a *population-conditional* test-time compute policy — truncate on early-correct, extend on early-incorrect. Pilot bootstrap (τ=0.25, n=100) gives early-incorrect / early-correct length ratio 1.78× (95% CI [0.76, 3.62]).
+
+The continuous-vs-binary comparison (our original P1) was not supported and has been **demoted to a baseline** rather than the headline.
 
 ## Method
 
@@ -46,27 +53,30 @@ This canonicalization addresses reviewer concern #3 (multi-digit answers).
 - **Depth** `δ(q) = min { ℓ / L : argmax π_ℓ = argmax π_L }`.
 - Extra: **KL-to-uniform** `κ(q) = KL( π_L || Uniform(|A(q)|) )` as redundancy check.
 
-### 5. Population Decomposition
+### 5. Population Decomposition (renamed)
 With threshold `τ` tuned on a held-out 20 % split:
-- Intuition-biased = `σ ≥ τ ∧ argmax π_L = correct_answer`
-- Prejudice-biased = `σ ≥ τ ∧ argmax π_L ≠ correct_answer`
-- Unbiased = `σ < τ`
+- `early_correct`   = `σ ≥ τ ∧ argmax π_L = correct_answer`      (was "intuition-biased")
+- `early_incorrect` = `σ ≥ τ ∧ argmax π_L ≠ correct_answer`      (was "prejudice-biased")
+- `low_commitment`  = `σ < τ`                                     (was "unbiased")
+
+Stability is reported via bootstrap-CI across `τ ∈ {0.15, 0.20, 0.25, 0.30}` with n_boot = 2000. The `early_incorrect / early_correct` length ratio is reported only when both populations have ≥ 3 items in each bootstrap resample.
 
 ### 6. Mitigation (Bonus)
 **Prejudice-conditional truncation.** At reasoning-step boundary tokens (those preceded by `"Wait"`, `"Alternatively"`, `"Hmm"`), if the running logit-lens argmax has matched `argmax π_L` (the initial bias) for N consecutive boundaries AND the problem is *intuition-biased*, emit `</think>` and the initial-bias answer. For *prejudice-biased* problems, do NOT truncate — those are the cases that need the overthinking.
 
 This inverts the usual "confidence → truncate" heuristic by conditioning on *bias type*.
 
-## Pre-registered Predictions
+## Pre-registered Predictions (revised post-Round-1)
 
-| Prediction | Metric | Threshold for "pilot positive" |
-|------------|--------|-------------------------------|
-| P1 | `Spearman(σ, length) − Spearman(μ, length)` | ≥ +0.08 |
-| P2 | `ΔR²(σ+δ) − R²(σ alone)` | ≥ +0.05 |
-| P3 | `mean_length(prejudice) / mean_length(intuition)` | ≥ 1.8× |
-| P4 | Truncation-preservation accuracy on intuition-biased set | ≥ 97 % of full-CoT accuracy at − 30 % tokens |
+| ID | Claim | Metric | Threshold |
+|----|-------|--------|-----------|
+| **P2′** | δ predicts length beyond problem difficulty | partial Spearman(δ, length \| correct, κ, σ) | ≥ +0.15 on at least 2 of 3 models |
+| **P2″** | δ survives vs. logit-lens artifact | tuned-lens replicates P2′ with ≥ 75 % of raw-lens stat | |
+| **P3′** | Early-incorrect CoT length > early-correct | bootstrap-mean ratio at τ=0.25, n_boot=2000 | ≥ 1.5×, 95% CI excluding 1.0 on at least 1 model/dataset pair |
+| **P4**  | Population-conditional test-time budget works | accuracy on early-correct at −30 % tokens | ≥ 97 % of full-CoT accuracy |
+| (demoted) P1 | Continuous σ more length-informative than binary μ | Spearman(σ,L) − Spearman(μ,L) | Reported as baseline only |
 
-If P1 or P3 fails, fall back to Backup Idea (BDE per-step tracking, see IDEA_REPORT.md) before implementing the mitigation.
+If P2′ fails on all three models, fall back to the Backup Idea (BDE per-step tracking) before implementing mitigation.
 
 ## Contribution Table
 
