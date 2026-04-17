@@ -31,6 +31,7 @@ from transformers.generation.logits_process import LogitsProcessor
 
 from lib.answer_vocab import canonicalize_integer, canonicalize_mcq
 from lib.config import load_cfg
+from lib.datasets import normalize_row
 from lib.io_utils import dump_json, read_jsonl, set_seeds, write_jsonl
 from lib.lens import lens_distribution, make_lens
 from lib.prompting import build_cot_prompt
@@ -199,7 +200,7 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = load_cfg(args.cfg)
-    problems = read_jsonl(args.problems)
+    problems = [normalize_row(r, i) for i, r in enumerate(read_jsonl(args.problems))]
     lib_rows = {r["id"]: r for r in read_jsonl(args.lib)}
 
     run_mitigation(

@@ -32,6 +32,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lib.answer_vocab import AnswerVocab, integer_vocab, mcq_vocab
 from lib.config import load_cfg
+from lib.datasets import normalize_row
 from lib.io_utils import dump_json, read_jsonl, set_seeds, write_jsonl
 from lib.lens import lens_distribution, make_lens
 from lib.metrics import compute_lib
@@ -82,12 +83,15 @@ def main() -> None:
         layers=cfg.model.lens_layers,
     )
 
-    problems = read_jsonl(args.problems)
+    problems = [normalize_row(r, i) for i, r in enumerate(read_jsonl(args.problems))]
     cot_rows = {r["id"]: r for r in read_jsonl(args.cot_out)}
     direct_rows = {r["id"]: r for r in read_jsonl(args.direct_out)}
 
     out_rows = []
     for ex in tqdm(problems, desc="extract-LIB"):
+        if ex["id"] not in cot_rows or ex["id"] not in direct_rows:
+            print(f"  skipping {ex['id']}: missing cot/direct row")
+            continue
         cot = cot_rows[ex["id"]]
         drow = direct_rows[ex["id"]]
 

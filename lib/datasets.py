@@ -14,6 +14,37 @@ def _read_jsonl(path: Path) -> List[Dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
+def normalize_row(ex: Dict, idx: int = 0) -> Dict:
+    """Normalize a raw JSONL row to {id, question, answer, format, choices?}.
+
+    Accepts either `problem` or `question` as the prompt field. Infers `format`
+    when missing: single-letter answer with `choices` => mcq; all-digit answer =>
+    integer; else => free.
+    """
+    q = ex.get("question") or ex.get("problem")
+    if q is None:
+        raise KeyError("row has neither 'question' nor 'problem'")
+    a = str(ex.get("answer", "")).strip()
+    fmt = ex.get("format")
+    choices = ex.get("choices")
+    if fmt is None:
+        if choices is not None and len(a) == 1 and a.isalpha():
+            fmt = "mcq"
+        elif a.lstrip("-").isdigit():
+            fmt = "integer"
+        else:
+            fmt = "free"
+    out = {
+        "id": ex.get("id", f"row_{idx:04d}"),
+        "question": q,
+        "answer": a,
+        "format": fmt,
+    }
+    if choices is not None:
+        out["choices"] = choices
+    return out
+
+
 def load_aime(year: int = 2024, root: str = "data/aime") -> List[Dict]:
     rows = _read_jsonl(Path(root) / f"aime{year}.jsonl")
     return [
