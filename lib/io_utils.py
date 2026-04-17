@@ -6,10 +6,23 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import numpy as np
+import torch
+
+
+def _json_default(obj: Any) -> Any:
+    # Convert common ML numeric/container types to native Python JSON values.
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, torch.Tensor):
+        if obj.ndim == 0:
+            return obj.item()
+        return obj.detach().cpu().tolist()
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
 def set_seeds(seed: int) -> None:
-    import torch
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -28,22 +41,6 @@ def write_jsonl(path: str | Path, rows: Iterable[dict[str, Any]]) -> None:
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
     with open(path) as f:
         return [json.loads(l) for l in f if l.strip()]
-
-
-def _json_default(o: Any) -> Any:
-    """Handle numpy scalars (bool_, int64, float64) that json can't serialize natively."""
-    if isinstance(o, np.bool_):
-        return bool(o)
-    if isinstance(o, np.integer):
-        return int(o)
-    if isinstance(o, np.floating):
-        v = float(o)
-        if np.isnan(v):
-            return None
-        return v
-    if isinstance(o, np.ndarray):
-        return o.tolist()
-    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
 
 def dump_json(path: str | Path, obj: Any) -> None:
