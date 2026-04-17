@@ -17,10 +17,10 @@ import torch.nn as nn
 from datasets import load_dataset
 from torch.optim import AdamW
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lib.config import load_cfg
 from lib.io_utils import set_seeds
+from lib.model_load import load_model
 
 
 def _hidden_states(model, input_ids, attention_mask):
@@ -63,17 +63,8 @@ def main() -> None:
     cfg = load_cfg(args.cfg)
     set_seeds(cfg.generation.seed)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tok, model, device = load_model(cfg)
     dtype = getattr(torch, cfg.model.dtype)
-
-    tok = AutoTokenizer.from_pretrained(cfg.model.hf_id)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model.hf_id, torch_dtype=dtype, device_map=device
-    )
-    model.eval()
     for p in model.parameters():
         p.requires_grad_(False)
 

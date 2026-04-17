@@ -14,6 +14,8 @@ class ModelCfg:
     lens_layers: List[int]
     pre_think_tag: str
     think_close_tag: str
+    max_position_embeddings: int | None = None
+    rope_scaling: dict | None = None
 
 
 @dataclass

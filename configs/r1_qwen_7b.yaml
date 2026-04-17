@@ -6,6 +6,11 @@ model:
   lens_layers: [7, 14, 18, 22, 27]
   pre_think_tag: "<think>\n"
   think_close_tag: "</think>"
+  max_position_embeddings: 65536
+  rope_scaling:
+    type: yarn
+    factor: 4.0
+    original_max_position_embeddings: 16384
 
 generation:
   max_new_tokens: 32768

@@ -26,7 +26,6 @@ from typing import Dict, List, Optional
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessor
 
 from lib.answer_vocab import canonicalize_integer, canonicalize_mcq
@@ -34,6 +33,7 @@ from lib.config import load_cfg
 from lib.datasets import normalize_row
 from lib.io_utils import dump_json, read_jsonl, set_seeds, write_jsonl
 from lib.lens import lens_distribution, make_lens
+from lib.model_load import load_model
 from lib.prompting import build_cot_prompt
 
 
@@ -73,14 +73,7 @@ def run_mitigation(cfg, mode: str, lens_path: Optional[Path], problems: List[Dic
                    lib_rows: Dict[str, Dict], out_path: Path,
                    n_boundary_hits: int = 2) -> None:
     set_seeds(cfg.generation.seed)
-    dtype = getattr(torch, cfg.model.dtype)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    tok = AutoTokenizer.from_pretrained(cfg.model.hf_id)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-    mdl = AutoModelForCausalLM.from_pretrained(cfg.model.hf_id, torch_dtype=dtype, device_map=device)
-    mdl.eval()
+    tok, mdl, device = load_model(cfg)
 
     lens = None
     if mode == "lib_prejudice":

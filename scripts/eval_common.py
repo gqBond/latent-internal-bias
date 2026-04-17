@@ -13,25 +13,12 @@ from typing import Callable, Dict, List
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lib.answer_vocab import canonicalize_integer, canonicalize_mcq
 from lib.config import Cfg
 from lib.io_utils import set_seeds, write_jsonl
+from lib.model_load import load_model
 from lib.prompting import build_cot_prompt, build_direct_prompt
-
-
-def _make_model(cfg: Cfg):
-    tok = AutoTokenizer.from_pretrained(cfg.model.hf_id)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-    dtype = getattr(torch, cfg.model.dtype)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    mdl = AutoModelForCausalLM.from_pretrained(
-        cfg.model.hf_id, torch_dtype=dtype, device_map=device
-    )
-    mdl.eval()
-    return tok, mdl, device
 
 
 def _generate(tok, mdl, device, prompt: str, max_new: int, temperature: float, top_p: float,
@@ -61,7 +48,7 @@ def run_eval(
     out_direct: Path,
 ) -> None:
     set_seeds(cfg.generation.seed)
-    tok, mdl, device = _make_model(cfg)
+    tok, mdl, device = load_model(cfg)
 
     rows_cot, rows_direct = [], []
     for ex in tqdm(problems, desc="eval"):
