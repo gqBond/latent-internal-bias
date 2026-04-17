@@ -4,17 +4,19 @@
   "status": "in_progress",
   "last_score": 3.0,
   "last_verdict": "not ready",
-  "pending_experiments": [
-    "tuned_lens_training_7B",
-    "scale_replication_1_5B",
-    "scale_replication_14B",
-    "mcq_benchmark_knowlogic"
+  "local_fixes_done": [
+    "canonicalize_to_vocab: fix P3=None bug",
+    "partial_correlation_delta_length: implemented in analysis_lib",
+    "bootstrap_p3_ratio: implemented in analysis_lib (tau sweep)",
+    "rename_populations: intuition/prejudice/unbiased -> early_correct/early_incorrect/low_commitment",
+    "reframe_proposal_around_delta: FINAL_PROPOSAL.md updated"
   ],
-  "local_fixes_pending": [
-    "partial_correlation_delta_length",
-    "bootstrap_p3_ratio",
-    "rename_populations",
-    "reframe_proposal_around_delta"
+  "pending_experiments_on_gpu": [
+    "tuned_lens_training_7B (from scripts/round2_launch.sh)",
+    "scale_replication_1_5B (from scripts/round2_launch.sh)",
+    "scale_replication_14B (from scripts/round2_launch.sh)",
+    "mcq_benchmark_knowlogic (from scripts/round2_launch.sh)"
   ],
+  "next_action": "User runs scripts/round2_launch.sh on GPU server, rsyncs results back. Then Round-2 codex-reply via threadId 019d9ca9-b384-7501-88c9-dc254b3c17eb.",
   "timestamp": "2026-04-16T00:00:00"
 }
