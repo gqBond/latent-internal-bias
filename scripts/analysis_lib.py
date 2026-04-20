@@ -12,6 +12,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
+from collections import Counter
 from pathlib import Path
 from typing import List, Dict, Tuple
 
@@ -135,6 +137,79 @@ def _decomp(rows: List[Dict], tau: float) -> Dict[str, List[Dict]]:
     return out
 
 
+def _calibration_sanity(rows: List[Dict]) -> Dict:
+    """Round-2 reviewer ask: show that the lens readout isn't dominated by a global
+    label prior. Report, per layer:
+        - argmax label frequency table
+        - argmax entropy across problems (nats) — higher is more problem-specific
+        - dominant-label fraction (max freq) — lower is healthier
+        - max-prob sigma distribution (mean, std)
+
+    Works for both first-digit and full-answer label sets because it just reads
+    whichever `labels` are present on each row.
+    """
+    out: Dict = {"per_layer": {}}
+    if not rows:
+        return out
+
+    # Final-layer argmax (sigma layer) across problems.
+    final_argmax = [r.get("bias_argmax", "") for r in rows]
+    freq = Counter(final_argmax)
+    n = len(rows)
+    probs = np.array([c / n for c in freq.values()])
+    entropy = float(-(probs * np.log(np.clip(probs, 1e-12, 1.0))).sum())
+    dominant = max(freq.values()) / n if freq else 0.0
+
+    # Ground-truth label distribution (for comparison — "is the lens just predicting
+    # the modal label of this benchmark, or something problem-specific?").
+    gt = []
+    for r in rows:
+        labels = r.get("labels") or []
+        can = canonicalize_to_vocab(r.get("correct_answer") or "", labels)
+        if can:
+            gt.append(can)
+    gt_freq = Counter(gt)
+    gt_n = sum(gt_freq.values())
+    gt_dominant = (max(gt_freq.values()) / gt_n) if gt_n else None
+
+    out["final_layer"] = {
+        "n": n,
+        "argmax_freq_top5": freq.most_common(5),
+        "argmax_entropy_nats": entropy,
+        "dominant_label_frac": dominant,
+        "correct_answer_dominant_frac": gt_dominant,
+        "sigma_mean": float(np.mean([r["sigma"] for r in rows])),
+        "sigma_std": float(np.std([r["sigma"] for r in rows])),
+    }
+
+    # Per-layer argmax entropy (requires pi_per_layer).
+    if rows and rows[0].get("pi_per_layer"):
+        layers = sorted(rows[0]["pi_per_layer"].keys(), key=lambda s: int(s))
+        for ℓ in layers:
+            labels = rows[0].get("labels") or []
+            argmaxes = []
+            for r in rows:
+                pi = r["pi_per_layer"].get(ℓ)
+                if pi is None:
+                    continue
+                idx = int(np.argmax(pi))
+                if idx < len(labels):
+                    argmaxes.append(labels[idx])
+            if not argmaxes:
+                continue
+            f = Counter(argmaxes)
+            N = len(argmaxes)
+            p = np.array([c / N for c in f.values()])
+            H = float(-(p * np.log(np.clip(p, 1e-12, 1.0))).sum())
+            out["per_layer"][ℓ] = {
+                "argmax_freq_top3": f.most_common(3),
+                "argmax_entropy_nats": H,
+                "dominant_label_frac": max(f.values()) / N,
+            }
+
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--lib", required=True)
@@ -144,6 +219,10 @@ def main() -> None:
                     help="skip canonicalization-based recomputation of mu/mu_correct")
     ap.add_argument("--tau", type=float, default=None,
                     help="override decomposition.tau (default: cfg value)")
+    ap.add_argument("--min-cell-size", type=int, default=20,
+                    help="Round-2 reviewer guard: require both P3 populations to have "
+                         "n >= this before reporting the ratio; else mark null with "
+                         "reason=insufficient_cell. Set to 0 to disable.")
     args = ap.parse_args()
 
     cfg = load_cfg(args.cfg)
@@ -193,9 +272,17 @@ def main() -> None:
         for name, rs in pops.items()
     }
     ratio = None
+    ratio_reason = None
     if pops["intuition"] and pops["prejudice"]:
-        ratio = (pop_stats["early_incorrect"]["mean_length"]
-                 / pop_stats["early_correct"]["mean_length"])
+        if (args.min_cell_size > 0
+                and (len(pops["intuition"]) < args.min_cell_size
+                     or len(pops["prejudice"]) < args.min_cell_size)):
+            ratio_reason = (f"insufficient_cell (need n>={args.min_cell_size} per group, "
+                            f"got early_correct={len(pops['intuition'])}, "
+                            f"early_incorrect={len(pops['prejudice'])})")
+        else:
+            ratio = (pop_stats["early_incorrect"]["mean_length"]
+                     / pop_stats["early_correct"]["mean_length"])
 
     # Round-1 reviewer asked for stability: bootstrap CI + τ sweep.
     tau_sweep = {}
@@ -223,6 +310,7 @@ def main() -> None:
         "P2_pass": (r2_sigma_delta - r2_sigma) >= 0.05,
         "P3_ratio_prejudice_over_intuition": ratio,
         "P3_pass": ratio is not None and ratio >= 1.8,
+        "P3_null_reason": ratio_reason,
     }
 
     summary = {
@@ -243,10 +331,13 @@ def main() -> None:
         },
         "decomposition": {
             "tau": tau,
+            "min_cell_size": args.min_cell_size,
             "populations": pop_stats,
             "early_incorrect_over_early_correct_length_ratio": ratio,
+            "ratio_null_reason": ratio_reason,
             "bootstrap_ratio_tau_sweep": tau_sweep,
         },
+        "calibration_sanity": _calibration_sanity(rows),
         "partial_correlations": {
             "spearman_delta_length_given_correct_kappa_sigma": {
                 "stat": pc_delta[0], "p": pc_delta[1],

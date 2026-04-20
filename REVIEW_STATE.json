@@ -1,22 +1,29 @@
 {
-  "round": 1,
-  "threadId": "019d9ca9-b384-7501-88c9-dc254b3c17eb",
+  "round": 2,
+  "threadId": "019dac49-405f-7de0-bffd-6ed175dbcc4c",
   "status": "in_progress",
-  "last_score": 3.0,
+  "last_score": 4.0,
   "last_verdict": "not ready",
-  "local_fixes_done": [
-    "canonicalize_to_vocab: fix P3=None bug",
-    "partial_correlation_delta_length: implemented in analysis_lib",
-    "bootstrap_p3_ratio: implemented in analysis_lib (tau sweep)",
-    "rename_populations: intuition/prejudice/unbiased -> early_correct/early_incorrect/low_commitment",
-    "reframe_proposal_around_delta: FINAL_PROPOSAL.md updated"
+  "round2_fixes_done_local": [
+    "lib/lens.py: hard assert min ||W-I||_F > 0.1 on tuned-lens load",
+    "lib/lens.py: lens_distribution gains calibration_logits param",
+    "lib/lens.py: lens_logits helper added",
+    "scripts/extract_lib.py: --null-prompt CLI, caches per-layer null lens logits, subtracts before restriction",
+    "analysis_lib.py: partial-Spearman + bootstrap-ratio tau-sweep + pop rename (done in round 1)"
+  ],
+  "round2_fixes_still_pending": [
+    "full_answer_scoring (000..999 AIME): reviewer's #1 ask — not yet implemented",
+    "calibration_sanity_report: top-label distribution, argmax entropy, lift vs null",
+    "denser_layer_coverage for delta (currently only [7,14,18,22,27])",
+    "minimum_cell_size guards in P3 decomposition",
+    "held-out validation of conditional-sigma finding"
   ],
   "pending_experiments_on_gpu": [
-    "tuned_lens_training_7B (from scripts/round2_launch.sh)",
-    "scale_replication_1_5B (from scripts/round2_launch.sh)",
-    "scale_replication_14B (from scripts/round2_launch.sh)",
-    "mcq_benchmark_knowlogic (from scripts/round2_launch.sh)"
+    "null-prompt calibration re-run on 7B (code ready, not yet executed)",
+    "full-answer scoring re-run on 7B (code not yet implemented)",
+    "MCQ benchmark (Knowlogic / CommonsenseQA subset)",
+    "1.5B + 14B replication (deprioritized until readout fixed)"
   ],
-  "next_action": "User runs scripts/round2_launch.sh on GPU server, rsyncs results back. Then Round-2 codex-reply via threadId 019d9ca9-b384-7501-88c9-dc254b3c17eb.",
-  "timestamp": "2026-04-16T00:00:00"
+  "next_action": "Implement full-answer scoring + calibration sanity report locally, commit, update round2_launch.sh, then user runs re-extraction on GPU. After: Round 3 codex-reply with threadId 019dac49-405f-7de0-bffd-6ed175dbcc4c.",
+  "timestamp": "2026-04-20T14:55:00"
 }

@@ -26,6 +26,20 @@ class AnswerVocab:
     labels: List[str]
 
 
+@dataclass
+class FullAnswerVocab:
+    """Multi-token answer vocabulary — scored by teacher-forced sequence log-prob
+    under the lens. Added in Round 2 per reviewer ask: first-digit scoring
+    ("argmax=9 everywhere" pathology) was conflating label prior with evidence.
+
+    token_id_lists: list of token-id sequences, one per candidate.
+    labels:         candidate answer strings aligned to token_id_lists.
+    """
+
+    token_id_lists: List[List[int]]
+    labels: List[str]
+
+
 def _first_token_id(tok: "PreTrainedTokenizerBase", s: str) -> int:
     ids = tok.encode(s, add_special_tokens=False)
     assert len(ids) >= 1, f"empty encoding for {s!r}"
@@ -61,6 +75,45 @@ def integer_vocab(
     import torch
     ids = [_first_token_id(tok, u) for u in uniq]
     return AnswerVocab(torch.tensor(ids, dtype=torch.long), uniq)
+
+
+def full_answer_vocab(
+    tok: "PreTrainedTokenizerBase",
+    candidates: Sequence[str],
+    *,
+    dedup: bool = True,
+    max_candidates: int = 64,
+) -> FullAnswerVocab:
+    """Build a full-string candidate vocab. Each candidate is tokenized as a
+    sequence (variable length). Callers score each candidate by teacher-forced
+    lens sequence log-prob; see `lib.lens.score_full_answers`.
+
+    No-leading-space and leading-space forms are both possible depending on the
+    tokenizer — we pick the one whose first token is most common across
+    candidates to keep the first-token position consistent."""
+    seen: List[str] = []
+    for c in candidates:
+        if not c:
+            continue
+        s = str(c).strip()
+        if not s:
+            continue
+        if dedup and s in seen:
+            continue
+        seen.append(s)
+    seen = seen[:max_candidates]
+
+    token_lists: List[List[int]] = []
+    labels: List[str] = []
+    for s in seen:
+        ids = tok.encode(" " + s, add_special_tokens=False)
+        if not ids:
+            ids = tok.encode(s, add_special_tokens=False)
+        if not ids:
+            continue
+        token_lists.append(list(ids))
+        labels.append(s)
+    return FullAnswerVocab(token_id_lists=token_lists, labels=labels)
 
 
 def canonicalize_integer(text: str) -> str | None:

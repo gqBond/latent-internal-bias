@@ -29,11 +29,17 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-from lib.answer_vocab import AnswerVocab, integer_vocab, mcq_vocab
+from lib.answer_vocab import (
+    AnswerVocab,
+    FullAnswerVocab,
+    full_answer_vocab,
+    integer_vocab,
+    mcq_vocab,
+)
 from lib.config import load_cfg
 from lib.datasets import normalize_row
 from lib.io_utils import dump_json, read_jsonl, set_seeds, write_jsonl
-from lib.lens import lens_distribution, make_lens
+from lib.lens import lens_distribution, lens_logits, make_lens, score_full_answers
 from lib.metrics import compute_lib
 from lib.model_load import load_model
 from lib.prompting import build_pre_think_prompt
@@ -48,6 +54,18 @@ def _build_vocab(tok, row, direct_row) -> AnswerVocab:
     return integer_vocab(tok, das)
 
 
+def _build_full_vocab(tok, row, direct_row, cot_row) -> FullAnswerVocab:
+    """Round-2 reviewer ask: score full answer strings instead of first digit.
+
+    Candidates = dedup(direct_answers ∪ {cot_answer, correct_answer}). Each is
+    tokenized as a sequence and scored by teacher-forced lens log-prob."""
+    das = [a for a in direct_row.get("direct_answers", []) if a]
+    cot = cot_row.get("cot_answer") or ""
+    correct = row.get("answer") or ""
+    cands = [c for c in (das + [cot, correct]) if c]
+    return full_answer_vocab(tok, cands)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cfg", required=True)
@@ -55,6 +73,15 @@ def main() -> None:
     ap.add_argument("--cot-out", required=True, help="Output of eval_*.py CoT file.")
     ap.add_argument("--direct-out", required=True, help="Output of eval_*.py direct-answer file.")
     ap.add_argument("--lens-path", default=None, help="Tuned-lens checkpoint (required if lens.type=tuned).")
+    ap.add_argument("--null-prompt", default=None,
+                    help="Format string with '{format}' placeholder used to build a neutral prompt whose "
+                         "lens logits are subtracted from each problem's lens logits — a cheap global-prior "
+                         "calibration for the 'argmax=9 everywhere' pathology. If omitted, no calibration.")
+    ap.add_argument("--full-answer", action="store_true",
+                    help="Round-2 reviewer ask: score full candidate answer strings (teacher-forced "
+                         "lens sequence log-prob) instead of first-digit vocab. Candidates = dedup "
+                         "(direct_answers ∪ {cot_answer, correct_answer}). Cost: one extra forward "
+                         "pass per candidate per problem.")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -77,6 +104,21 @@ def main() -> None:
     cot_rows = {r["id"]: r for r in read_jsonl(args.cot_out)}
     direct_rows = {r["id"]: r for r in read_jsonl(args.direct_out)}
 
+    # Optional null-prompt baseline: one forward pass on a neutral question,
+    # cached per layer. Subtracted from each problem's lens logits before
+    # restricting to A(q) — removes the lens's global token prior.
+    calib_per_layer: dict[int, torch.Tensor] = {}
+    if args.null_prompt:
+        null_text = args.null_prompt.format(format="integer")
+        null_prompt = build_pre_think_prompt(tok, null_text, "integer")
+        null_enc = tok(null_prompt, return_tensors="pt").to(device)
+        with torch.no_grad():
+            null_out = mdl(**null_enc, output_hidden_states=True, use_cache=False)
+        for ℓ in cfg.model.lens_layers:
+            h_null = null_out.hidden_states[ℓ + 1][0, -1]
+            calib_per_layer[ℓ] = lens_logits(lens, h_null, layer=ℓ).detach()
+        print(f"null-prompt calibration built for layers {list(calib_per_layer)}")
+
     out_rows = []
     for ex in tqdm(problems, desc="extract-LIB"):
         if ex["id"] not in cot_rows or ex["id"] not in direct_rows:
@@ -97,17 +139,61 @@ def main() -> None:
         h_layers = out.hidden_states  # tuple len = num_layers + 1; [0] is embeddings
 
         pi_per_layer = {}
-        vocab = _build_vocab(tok, ex, drow)
-        answer_ids = vocab.token_ids.to(device)
-
-        for ℓ in cfg.model.lens_layers:
-            h_last = h_layers[ℓ + 1][0, -1]            # (d,)
-            pi = lens_distribution(lens, h_last, layer=ℓ, answer_token_ids=answer_ids)
-            pi_per_layer[ℓ] = pi.detach().cpu()
+        if args.full_answer:
+            full_vocab = _build_full_vocab(tok, ex, drow, cot)
+            if not full_vocab.labels:
+                print(f"  skipping {ex['id']}: no full-answer candidates")
+                continue
+            prompt_ids = enc.input_ids[0]
+            p_star = prompt_ids.shape[0] - 1
+            # Collect hidden states at positions p*..p*+M-1 for each candidate.
+            cand_h_per_layer: dict[int, list[torch.Tensor]] = {
+                ℓ: [] for ℓ in cfg.model.lens_layers
+            }
+            for toks in full_vocab.token_id_lists:
+                full_ids = torch.cat([
+                    prompt_ids,
+                    torch.tensor(toks, dtype=prompt_ids.dtype, device=device),
+                ], dim=0).unsqueeze(0)
+                with torch.no_grad():
+                    c_out = mdl(input_ids=full_ids, output_hidden_states=True, use_cache=False)
+                M = len(toks)
+                for ℓ in cfg.model.lens_layers:
+                    cand_h_per_layer[ℓ].append(
+                        c_out.hidden_states[ℓ + 1][0, p_star:p_star + M]
+                    )
+            # Score candidates per layer → softmax across candidates.
+            for ℓ in cfg.model.lens_layers:
+                lps = []
+                for k, toks in enumerate(full_vocab.token_id_lists):
+                    h_k = cand_h_per_layer[ℓ][k]
+                    lp = 0.0
+                    for i, tid in enumerate(toks):
+                        logits = lens_logits(lens, h_k[i], layer=ℓ)
+                        if ℓ in calib_per_layer:
+                            logits = logits - calib_per_layer[ℓ].to(
+                                logits.device, dtype=logits.dtype
+                            )
+                        lp += float(torch.log_softmax(logits.float(), dim=-1)[tid].item())
+                    lps.append(lp)
+                pi = torch.softmax(torch.tensor(lps, dtype=torch.float32), dim=-1)
+                pi_per_layer[ℓ] = pi
+            labels = full_vocab.labels
+        else:
+            vocab = _build_vocab(tok, ex, drow)
+            answer_ids = vocab.token_ids.to(device)
+            for ℓ in cfg.model.lens_layers:
+                h_last = h_layers[ℓ + 1][0, -1]            # (d,)
+                pi = lens_distribution(
+                    lens, h_last, layer=ℓ, answer_token_ids=answer_ids,
+                    calibration_logits=calib_per_layer.get(ℓ),
+                )
+                pi_per_layer[ℓ] = pi.detach().cpu()
+            labels = vocab.labels
 
         lib = compute_lib(
             pi_per_layer=pi_per_layer,
-            labels=vocab.labels,
+            labels=labels,
             final_answer=cot["cot_answer"] or "",
             correct_answer=ex["answer"],
             num_model_layers=cfg.model.num_layers,
@@ -116,7 +202,8 @@ def main() -> None:
         out_rows.append({
             "id": ex["id"],
             "format": ex["format"],
-            "labels": vocab.labels,
+            "labels": labels,
+            "scoring_mode": "full_answer" if args.full_answer else "first_digit",
             "pi_per_layer": {str(k): v.tolist() for k, v in pi_per_layer.items()},
             "sigma": lib.sigma,
             "mu": lib.mu,
@@ -138,6 +225,8 @@ def main() -> None:
         "lens_type": cfg.lens.type,
         "layers": cfg.model.lens_layers,
         "n_problems": len(out_rows),
+        "scoring_mode": "full_answer" if args.full_answer else "first_digit",
+        "null_prompt_calibration": args.null_prompt is not None,
     })
     print(f"wrote {len(out_rows)} rows to {args.out}")
 
