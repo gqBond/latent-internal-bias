@@ -1,106 +1,102 @@
-# Final Proposal — Latent Internal Bias (LIB)
+# Final Proposal — LIB Measurement Methodology
 
-> A layer-wise, hidden-state lens on when a model commits to an answer, and how that commitment predicts CoT length and correctness. Extends the direct-answer internal-bias metric of Dang et al. (ICLR 2026, arXiv 2505.16448).
+> A measurement-methodology paper on latent-internal-bias probes in reasoning models. Shows that single-token lens readouts create answer-prior artifacts, calibration alone does not remove them, and target-matched full-answer readouts change the claimed link between latent answers and reasoning length.
 
-> **Round-1 reframe (2026-04-16)**: After the first pilot, reviewer feedback (see `AUTO_REVIEW.md`) led us to demote the continuous-beats-binary headline and promote **emergence depth `δ`** and **conditional strength `σ | correctness, κ`** to the primary claims. The "intuition / prejudice" populations were renamed to `early_correct / early_incorrect / low_commitment` for defensibility.
+> **Round-3 reframe (2026-04-21)**: After Round-3 reviewer (score 5/10, "not ready" but pivot-endorsed), the core contribution is the full-answer lens readout + calibration sanity protocol. The pre-registered σ/δ/P1/P2/P3 claims are de-promoted to *diagnostic* signals showing how much of prior work's conclusions depends on the readout choice.
+>
+> **Round-1 reframe** and **Round-2 reframe** history is preserved in `AUTO_REVIEW.md` for provenance.
 
-## Problem Anchor (frozen)
+## Problem Anchor (revised)
 
-**Anchored problem.** The internal-bias metric of Dang et al. is a binary scalar computed by a second generation (direct-answer prompt). This has three consequences that their own paper flags as open:
+Dang et al. (ICLR 2026, arXiv 2505.16448) measure *internal bias* via a second direct-answer generation. Concurrent follow-ups, including an initial version of this proposal, attempted to replace that binary with a continuous tuned-lens scalar σ computed at a pre-reasoning position. We find that every variant of *single-token* lens readout on open-numeric math reasoning produces a severe answer-prior artifact: a single digit dominates the argmax across 67–97% of problems regardless of content. Null-prompt calibration (a cheap per-layer baseline subtraction) shifts which digit dominates but does not remove the dominance. Correlations with CoT length that survive first-digit scoring — including our Round-2 conditional-σ signal — do not survive full-answer scoring. The scientific claim is therefore entangled with the measurement choice.
 
-1. It is not actually "internal" — it is the model re-generating, so it confounds generation stochasticity with bias.
-2. It loses magnitude and distributional information (strength, confidence, direction).
-3. It is uniform across problem populations where the optimal intervention should differ — specifically, it does not separate bias that happens to be correct (intuition) from bias that is a common-wrong attractor (prejudice).
+## Thesis (new)
 
-As a result, the authors observe that **"the influence of internal bias persisted under all conditions"** of their mitigation experiments. Our anchored claim is that this is not a fundamental result but an artifact of measuring an aggregate of two oppositely-behaving populations.
+1. **Lens readouts on reasoning models must be target-matched.** A first-token lens over a digit vocabulary is not a measurement of latent answer; it is a measurement of the lens's digit prior convolved with the task. The dominant-label fraction is a sufficient sanity test: any single label > 0.35 on a benchmark whose ground-truth distribution is not that peaked is a red flag.
+2. **Full-answer teacher-forced scoring reduces the artifact.** Scoring candidate strings via summed per-position lens log-softmax restores an entropy and a ground-truth-dominance profile that matches the task, not the lens.
+3. **Post-hoc corollary (MATH500, 7B only, exploratory):** under full-answer scoring, problems on which the model has early latent commitment to the *correct* answer have ~1.7× longer CoT than problems with early commitment to a *wrong* answer. This inverts the naive "commitment → long CoT" reading of Dang-style metrics and is consistent with a verification-over-commitment account of chain-of-thought.
 
-## Thesis (revised)
+## Core contribution
 
-A **tuned-lens projection of the post-question pre-reasoning hidden state** reveals *when* the model has already committed to an answer. The **emergence depth** `δ` (earliest layer at which the later-final argmax wins) and **conditional commitment strength** `σ | correctness, κ` are predictive of CoT length above and beyond problem difficulty, and cleanly separate three behavioral populations (early-correct / early-incorrect / low-commitment) that demand different test-time compute strategies.
-
-## Dominant Contribution (revised)
-
-We submit:
-1. **`δ` is a cheap, lens-local signal for when the internal answer stabilizes.** It predicts CoT length on MATH500 at Spearman 0.233 (p=0.02), and 0.183 (p=0.07) after controlling for correctness, κ, σ — i.e., not merely a difficulty proxy.
-2. **`σ` conditioned on correctness and κ is a stronger length-predictor than raw σ.** On MATH500, partial Spearman(`σ`, length | `correct`, κ) = -0.235 (p=0.02), materially larger than the direct-answer binary Dang metric (0.001 on this subset).
-3. **A descriptive three-way decomposition** (early-correct / early-incorrect / low-commitment) enables a *population-conditional* test-time compute policy — truncate on early-correct, extend on early-incorrect. Pilot bootstrap (τ=0.25, n=100) gives early-incorrect / early-correct length ratio 1.78× (95% CI [0.76, 3.62]).
-
-The continuous-vs-binary comparison (our original P1) was not supported and has been **demoted to a baseline** rather than the headline.
+1. **Calibration sanity protocol** for lens-based internal-bias probes:
+   - report argmax-frequency distribution and entropy per layer;
+   - report dominant-label fraction at the reporting layer;
+   - compare against the benchmark's ground-truth label dominance;
+   - fail-closed on implausible peaks (e.g., `dominant_frac > 0.35` when GT is flat).
+2. **Full-answer lens scoring** (`--full-answer` in `scripts/extract_lib.py`): for each candidate answer string c ∈ 𝒞(q), teacher-force `prompt ⊕ c` through the model and compute `log P_lens(c | prompt) = Σ_i log softmax(lens_ℓ(h_{p*+i}))[t_i]`, then softmax across candidates → π_per_layer. Candidate set 𝒞(q) = direct-answer samples ∪ {CoT answer, ground truth}.
+3. **Three-readout ablation** on the same model/data: first-digit vs null-calibrated first-digit vs full-answer. Quantifies how much of each downstream metric is an artifact of the readout. Table-ready in the paper.
+4. **Exploratory secondary finding** (kept as exploratory, not a headline): the MATH500-7B full-answer P3 inversion, framed as a verification-consistent alternative interpretation.
 
 ## Method
 
-### 1. Tuned-Lens Preparation
-- Adapt the Belrose-et-al. tuned-lens (arXiv 2303.08112) per target model (R1-Distill-Qwen-7B/14B/32B, QwQ-32B).
-- Training data: 50 MB of OpenWebMath + FineMath → ≤ 200 gradient steps on A100-40G (≈ 15 min per model).
-- Fallback: raw logit-lens (no training) as an ablation.
+### 1. Lens preparation
+Belrose-et-al. tuned-lens (arXiv 2303.08112), per target model. 200–400 steps on OpenWebMath+FineMath ≈ 15–25 min per model on A100-40G. `lib/lens.py` hard-fails on load if `min_ℓ ||W_ℓ − I||_F < 0.1` to prevent a silent fallback to logit-lens.
 
-### 2. Bias Extraction Pipeline
-- Construct prompt `q` with the model's reasoning preamble through the `<think>` tag — **do not** include a direct-answer suffix.
-- Run one forward pass; cache hidden states `h_ℓ(p*)` at layers `ℓ ∈ {⌊L/4⌋, ⌊L/2⌋, ⌊3L/4⌋, L-1, L}` and position `p*` = last token of preamble.
-- Apply tuned-lens: `π_ℓ(a | q) ∝ softmax( Lens_ℓ h_ℓ(p*) ) | A(q)` where `A(q)` is the answer-vocabulary (§ 3).
+### 2. Readouts compared
+For the same hidden states and same tuned lens, compute three readouts per problem:
+- **First-digit**: restrict lens logits to digit tokens {0,…,9}, softmax, π_per_layer.
+- **Null-calibrated first-digit**: subtract per-layer lens logits of a neutral prompt ("Provide a number for this {format} answer.") from each problem's lens logits before restricting.
+- **Full-answer**: teacher-force each candidate c ∈ 𝒞(q) as the suffix, sum per-position log-softmax of lens outputs at target tokens, softmax across candidates.
 
-### 3. Answer Vocabulary `A(q)`
-Three cases:
-- **Multiple-choice (Knowlogic)**: `A(q) = {A, B, C, D}` at letter-token level.
-- **Integer open-answer (AIME / MATH500)**: Sample K = 16 direct-answer generations at T = 0.7; take the union of their first-digit tokens as candidates (max 10 integer + "9 of" hedge tokens).
-- **Free-form numeric (CharCount)**: first two digit tokens after the ``\boxed{`` tag from a sampled direct-answer.
+### 3. Calibration sanity output
+For each layer ℓ and readout, record: top-3 argmax labels with frequencies, argmax entropy (nats), dominant-label fraction. For the reporting layer, also record ground-truth answer dominance and σ mean/std. Emitted in every summary JSON under `calibration_sanity`.
 
-This canonicalization addresses reviewer concern #3 (multi-digit answers).
+### 4. Scalars (unchanged surface, now diagnostic)
+- σ(q) = max probability at last lens layer.
+- μ(q), μ_correct(q) = label-level alignment.
+- δ(q) = earliest layer where argmax stabilizes, normalized.
+- κ(q) = KL(π_L || Uniform).
 
-### 4. Derived Scalars
-- **Strength** `σ(q) = max_a π_{L}(a | q) ∈ [0,1]`.
-- **Alignment** `μ(q) = 1[argmax_a π_{L}(a | q) = final_CoT_answer(q)]`.
-- **Depth** `δ(q) = min { ℓ / L : argmax π_ℓ = argmax π_L }`.
-- Extra: **KL-to-uniform** `κ(q) = KL( π_L || Uniform(|A(q)|) )` as redundancy check.
+These are not the headline claims. They are reported as *probes* whose behavior across readouts documents the artifact.
 
-### 5. Population Decomposition (renamed)
-With threshold `τ` tuned on a held-out 20 % split:
-- `early_correct`   = `σ ≥ τ ∧ argmax π_L = correct_answer`      (was "intuition-biased")
-- `early_incorrect` = `σ ≥ τ ∧ argmax π_L ≠ correct_answer`      (was "prejudice-biased")
-- `low_commitment`  = `σ < τ`                                     (was "unbiased")
+### 5. P3 population decomposition (with guards)
+`early_correct = σ ≥ τ ∧ argmax matches correct`, `early_incorrect = σ ≥ τ ∧ ¬match`, `low_commitment = σ < τ`. Cell-size guard: ratio reported only when both `early_correct` and `early_incorrect` have n ≥ 20 (smaller cells return null with `reason=insufficient_cell`). Bootstrap CI (n_boot = 2000) across τ ∈ {0.15, 0.20, 0.25, 0.30}.
 
-Stability is reported via bootstrap-CI across `τ ∈ {0.15, 0.20, 0.25, 0.30}` with n_boot = 2000. The `early_incorrect / early_correct` length ratio is reported only when both populations have ≥ 3 items in each bootstrap resample.
+### 6. Cross-readout comparison (the paper's main table)
+For every (model, benchmark) the paper reports a three-column table of σ/δ/P1/P2/P3 under each readout plus the calibration sanity row. The table is the contribution: it quantifies how much of the literature's continuous-internal-bias claims survive a target-matched readout.
 
-### 6. Mitigation (Bonus)
-**Prejudice-conditional truncation.** At reasoning-step boundary tokens (those preceded by `"Wait"`, `"Alternatively"`, `"Hmm"`), if the running logit-lens argmax has matched `argmax π_L` (the initial bias) for N consecutive boundaries AND the problem is *intuition-biased*, emit `</think>` and the initial-bias answer. For *prejudice-biased* problems, do NOT truncate — those are the cases that need the overthinking.
+## De-promoted (Round-1/2 headline, now diagnostic)
 
-This inverts the usual "confidence → truncate" heuristic by conditioning on *bias type*.
+- P1 (continuous σ beats binary μ) is not a stable phenomenon across readouts and is reported only as a row in the three-readout table.
+- P2 (ΔR² for δ) passes on n=30 AIME only, fails MATH500 n=100. Kept as a diagnostic row.
+- Pre-reg P3 in the Round-2 form (early-incorrect > early-correct length) is violated in the wrong direction on MATH500 full-answer with bootstrap CI [0.38, 0.98] excluding 1. The inversion is the exploratory finding, not P3.
 
-## Pre-registered Predictions (revised post-Round-1)
+## Pre-registered generalization checks (Round 4)
 
 | ID | Claim | Metric | Threshold |
 |----|-------|--------|-----------|
-| **P2′** | δ predicts length beyond problem difficulty | partial Spearman(δ, length \| correct, κ, σ) | ≥ +0.15 on at least 2 of 3 models |
-| **P2″** | δ survives vs. logit-lens artifact | tuned-lens replicates P2′ with ≥ 75 % of raw-lens stat | |
-| **P3′** | Early-incorrect CoT length > early-correct | bootstrap-mean ratio at τ=0.25, n_boot=2000 | ≥ 1.5×, 95% CI excluding 1.0 on at least 1 model/dataset pair |
-| **P4**  | Population-conditional test-time budget works | accuracy on early-correct at −30 % tokens | ≥ 97 % of full-CoT accuracy |
-| (demoted) P1 | Continuous σ more length-informative than binary μ | Spearman(σ,L) − Spearman(μ,L) | Reported as baseline only |
+| **M1** | Full-answer reduces dominant-label fraction | `calibration_sanity.final_layer.dominant_label_frac` under full-answer < 0.35 | on at least 2 of 3 model sizes, on both AIME and MATH500 |
+| **M2** | Full-answer raises GT-answer dominance | `correct_answer_dominant_frac` under full-answer ≥ 0.45 (AIME) / ≥ 0.25 (MATH500) | on at least 2 of 3 model sizes |
+| **M3** | Readout choice flips ≥ one pre-reg outcome | At least one of P1/P2/P3 changes pass/fail state between first-digit and full-answer | on both AIME and MATH500 (already satisfied at 7B) |
+| **M4-explo** | MATH500 full-answer P3 inversion replicates across scale | bootstrap-mean ratio < 1.0 with CI excluding 1.0 | on at least 2 of 3 model sizes, MATH500 only |
 
-If P2′ fails on all three models, fall back to the Backup Idea (BDE per-step tracking) before implementing mitigation.
+M1–M3 establish the methodology claim. M4 is exploratory and labeled as such; a single positive replication is enough to keep the inversion as a claim, but it is not required for paper acceptance.
 
 ## Contribution Table
 
 | Contribution | Replaces/extends | Status |
 |--------------|------------------|--------|
-| Continuous internal-bias metric via tuned-lens | Dang et al. binary direct-answer metric | Novel (gap check clean) |
-| Bias-emergence depth `δ` | — | Novel |
-| Intuition-vs-prejudice decomposition | — | Novel |
-| Prejudice-conditional truncation | DiffAdapt, NYU probe (both un-decomposed) | Novel application of decomposition |
+| Full-answer teacher-forced lens readout | first-token lens-vocab restriction | Implemented (round 2/3) |
+| Calibration sanity protocol | implicit assumption of lens fidelity | Implemented, table-ready |
+| Three-readout ablation table | single-readout internal-bias claims | 7B done; scale replication in Round 4 |
+| P3 inversion on MATH500 full-answer | direction in Dang-style commitment story | Exploratory, needs scale replication |
 
-## Risks
+## Risks (revised)
 
-- **R1 — Tuned-lens variance across answer types.** Mitigation: per-format `A(q)` canonicalization in § 3; ablate raw logit-lens.
-- **R2 — Correlation improvement is driven by more-informative targets, not better-internal probe.** Mitigation: include "K-sample direct-answer peakedness" as a competitive baseline; the LIB metric must still win.
-- **R3 — Decomposition thresholds leak dataset info.** Mitigation: all thresholds cross-validated; report both held-in and held-out numbers.
-- **R4 — ICLR 2026 scoop risk.** The Dang paper is fresh; a follow-up on its metric is timely but competitive. Mitigation: prioritize the decomposition claim (which is harder to scoop than a lens-replacement).
+- **R1 — Cross-scale replication may fail M1/M2.** Mitigation: if full-answer does not reduce dominant-label frac on 1.5B or 14B, that is itself a finding ("the artifact is model-specific"); the paper still ships with honest reporting.
+- **R2 — Full-answer candidate set biases inference.** Dedup + cap at 64 candidates; candidate-set size reported alongside every result; ablate by restricting to {CoT answer, ground truth}.
+- **R3 — Calibration sanity threshold (0.35) is author-chosen.** Reported alongside the actual number and the benchmark's ground-truth label distribution for reader judgment.
+- **R4 — Verification-vs-commitment (M4) is a single-dataset story.** We flag it as exploratory throughout. No title/abstract claim. One line in the discussion with a pointer to intervention as follow-up.
 
-## Deliverables
+## Deliverables (Round 4)
 
-- `refine-logs/EXPERIMENT_PLAN.md` — runs, budget, order.
-- `refine-logs/EXPERIMENT_TRACKER.md` — live run status.
-- Pilot P0 artifact: `results/pilot_P0.json` with per-problem `{σ, μ, δ, length, correct, type}` and dataset-level correlations.
+- `scripts/round4_launch.sh`: cross-scale full-answer runs on 1.5B + 14B with sanity-gate.
+- Results JSONs: `results/lib/{R1-Distill-Qwen-1.5B,R1-Distill-Qwen-14B}/{aime2024,math500}_fullans_summary.json`.
+- `scripts/readout_comparison.py`: emits the three-readout table from existing summaries for the paper.
+- Updated `AUTO_REVIEW.md` round 4 entry (target: score ≥ 6).
 
-## Venue Target
+## Venue Target (revised)
 
-- **Minimum viable**: ACL 2026 short paper or ICLR 2026 workshop on reasoning models.
-- **Stretch**: NeurIPS 2026 main or ICLR 2027 full paper — requires multi-model + mitigation head-to-head.
+- **Primary**: NeurIPS 2026 workshop on mechanistic interpretability, or ICLR 2027 blog post (both receptive to measurement-correction papers).
+- **Stretch**: ACL 2026 short paper framed as "How to evaluate internal-bias probes in reasoning models", if M1–M3 replicate at scale.
+- **Aspiration**: full NeurIPS 2026 main paper — requires M4-exploratory to replicate on at least one additional model and an intervention confirming the verification account.

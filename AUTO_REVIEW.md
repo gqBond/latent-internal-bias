@@ -235,3 +235,83 @@ GPU runs (queued, user executes):
 - Continuing to Round 3 after implementing full-answer scoring + calibration sanity report locally, then user re-runs 7B extraction on GPU.
 - Not-ready on all 9 weakness items; 4 have local-code fixes landing this round; 5 require GPU or new data.
 
+---
+
+## Round 3 (2026-04-21)
+
+Thread: `019db117-0aeb-7521-98ac-1e14f05aafff` (Round 2 thread `019dac49-...` expired again; started fresh with full Round 1+2 recap).
+
+### Context sent to reviewer
+
+- Ran `scripts/round3_launch.sh` parts (A) and (B) on 7B only (per Round-2 guidance to delay scale until readout fixed).
+- Four new summaries under `results/lib/DeepSeek-R1-Distill-Qwen-7B/`: `{aime2024,math500_n100_s0}_{null,fullans}_summary.json`.
+- Sent three-way comparison (first-digit vs null-calibrated vs full-answer) across AIME24 and MATH500 for all metrics + calibration sanity.
+
+### Assessment (Summary)
+
+- **Score: 5/10** (up from 4/10)
+- **Verdict: not ready** — but strong pivot recommendation
+- Key criticisms / takeaways:
+  1. Full-answer readout is a real measurement fix: MATH500 final-layer dominant-label frac drops 0.69 → 0.24; AIME ground-truth dominance rises 0.23 → 0.67. This is the strongest evidence in the project.
+  2. Pre-registered story collapses under the clean readout. P1 flips across readouts, P2 only passes on n=30 AIME, P3 on MATH500 full-answer is robustly in the **wrong direction** (ratio 0.594, bootstrap CI [0.38, 0.98] — excludes 1 on the wrong side).
+  3. Conditional-σ and δ signals from Round 2 tracked the digit prior, not latent answer; both weaken or vanish under full-answer.
+  4. Reviewer: pivot to measurement-methodology paper. New headline: "Single-token lens readouts create answer-prior artifacts; target-matched full-answer readouts remove the artifact and change the link between latent answers and reasoning length."
+  5. MATH500 P3 inversion (early-correct → longer CoT) kept as *exploratory* finding consistent with a verification-over-commitment interpretation, but not a main claim.
+  6. Next highest-value run: (i) cross-scale full-answer on 1.5B and 14B > (ii) MCQ > (iv) intervention > (iii) bigger MATH500.
+
+### Reviewer Raw Response
+
+<details>
+<summary>Click to expand full Round 3 reviewer response</summary>
+
+The original thesis is not holding. The clean readout looks like a real measurement fix, but once you apply it, most of the pre-registered effects either weaken, vanish, or flip sign. I would stop trying to sell P1/P2/P3 as the main scientific story. The stronger paper now is about measurement: single-token lens readouts can create false internal-bias signals, null calibration alone does not solve the target-mismatch problem, and full-answer scoring plus simple calibration checks changes the conclusion.
+
+1. For a top venue, this is not ready in the current framing. As a paper claiming that latent answer commitment predicts longer reasoning, I would say no. As a methods-plus-negative-result paper, maybe yes, but only if you pivot hard and add one more strong generalization check. The new headline should be something close to: "Single-token tuned-lens readouts create answer-prior artifacts; target-matched full-answer readouts remove the artifact and change the claimed link between latent answers and reasoning length."
+
+2. Yes. The full-answer readout should now be the core contribution. That is where the strongest evidence is. The digit prior is not just reduced a bit; the readout behavior changes in a way that looks much more like the task. On MATH500, dominant-label fraction drops from 0.69 to 0.24. On AIME, ground-truth dominance rises from 0.23 to 0.67. Also, the old σ and δ findings move with the readout, which is exactly the point: the measurement choice was driving the science claim. That is a real paper.
+
+3. I would not make the MATH500 P3 inversion a main claim yet. It is interesting, and I would keep it in the paper, but only as an exploratory result. Right now it is post-hoc, it is clean on one dataset, and AIME does not give stable central cells. So I would write it as: "On MATH500-7B with full-answer scoring, early correct commitment is associated with longer chains, consistent with a verification account." I would not write "verification, not commitment" in the title or abstract without replication or an intervention.
+
+4. The highest-value single run is (i), cross-scale full-answer on 1.5B and 14B. That directly answers the earlier reviewer request, and it tells you whether the new measurement story is general or just a 7B case. My ranking is (i) > (ii) > (iv) > (iii). MCQ is second because it gives a cleaner answer space and can validate the measurement tool on a less messy task. The intervention idea has high upside, but with 5 GPU-hours it is risky and easy to under-power. Bigger MATH500 is last because it only tightens one post-hoc effect that should not be your headline yet. If you cannot afford both scales, do 14B first on the matched sample.
+
+5. New score: 5/10. Verdict: not ready. It is clearly better than Round 2 because you fixed the readout problem and added the right guards, but the fix also removed the old main story. I would pivot now. Stop trying to rescue P1/P2/P3 as wins, and write the paper around measurement error, full-answer readout, and how corrected measurement changes the scientific conclusion.
+
+</details>
+
+### Results
+
+7B, three readouts, side-by-side (key rows):
+
+| | AIME (n=30) | | | MATH500 (n=100) | | |
+|---|---|---|---|---|---|---|
+| Mode | first-digit | null-calib | **full-answer** | first-digit | null-calib | **full-answer** |
+| Final-layer dominant label | "9" | "8" | "1" | "9" | "8" | "2" |
+| Dominant-label frac | 0.97 | 0.80 | **0.33** | 0.69 | 0.67 | **0.24** |
+| GT-answer dominant frac | 0.23 | 0.23 | **0.67** | 0.35 | 0.35 | 0.30 |
+| Argmax entropy (nats) | ~0 | 0.63 | **2.54** | 1.01 | 1.26 | **2.57** |
+| P1 pass | no | no | no | no | **yes** (Δ=0.197) | no |
+| P2 pass | **yes** | no | **yes** | no | no | no |
+| P3 bootstrap mean @ τ=0.20 | 0.45 | undef. | **2.19 (CI [1.28, 3.52])** | 1.76 | 1.15 | **0.62 (CI [0.38, 0.98])** |
+| P3 cell guard (EC/EI) | 1/29 | 0/3 | 2/28 | 5/86 | 4/14 | **32/68** (only satisfied case) |
+
+Interpretation: full-answer readout is genuinely better; the pre-registered headline doesn't survive it. MATH500 P3 flips robustly to the opposite direction (early-correct → longer CoT), consistent with a verification-over-commitment account, but post-hoc.
+
+### Actions Taken (this round, completed locally)
+
+- [x] Ran null-prompt calibration + full-answer extraction on 7B (AIME24 + MATH500 n=100). All summaries committed.
+- [x] Calibration sanity report now present in every summary (per-layer + final-layer).
+- [x] P3 min-cell-size guard active; correctly nullifies degenerate populations.
+
+### Actions planned for Round 4 (this queue)
+
+- [ ] **Reframe `refine-logs/FINAL_PROPOSAL.md`** around the measurement-methodology narrative (new headline above).
+- [ ] Create `scripts/round4_launch.sh` for **cross-scale full-answer** on 1.5B and 14B (reviewer's #1 priority).
+- [ ] Add an MCQ extraction path with full-answer mode (reviewer's #2 — if budget allows after cross-scale).
+- [ ] De-promote P1/P2/P3 in proposal/results text; document MATH500 P3 inversion as exploratory.
+- [ ] Consider: add a `scripts/readout_comparison.py` that emits the 3-readout sanity table automatically (for the paper).
+
+### Status
+
+- Continuing to Round 4 (last round). Priority is to land the measurement-paper reframe locally and launch the cross-scale GPU runs.
+
+

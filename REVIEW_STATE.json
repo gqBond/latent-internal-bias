@@ -1,29 +1,33 @@
 {
-  "round": 2,
-  "threadId": "019dac49-405f-7de0-bffd-6ed175dbcc4c",
+  "round": 3,
+  "threadId": "019db117-0aeb-7521-98ac-1e14f05aafff",
   "status": "in_progress",
-  "last_score": 4.0,
-  "last_verdict": "not ready",
-  "round2_fixes_done_local": [
-    "lib/lens.py: hard assert min ||W-I||_F > 0.1 on tuned-lens load",
-    "lib/lens.py: lens_distribution gains calibration_logits param",
-    "lib/lens.py: lens_logits helper added",
-    "scripts/extract_lib.py: --null-prompt CLI, caches per-layer null lens logits, subtracts before restriction",
-    "analysis_lib.py: partial-Spearman + bootstrap-ratio tau-sweep + pop rename (done in round 1)"
+  "last_score": 5.0,
+  "last_verdict": "not ready (pivot endorsed)",
+  "round3_fixes_done_local": [
+    "ran null-prompt + full-answer extraction on 7B (AIME + MATH500 n=100)",
+    "calibration sanity report landed in every summary",
+    "P3 min-cell-size guard active (n>=20)",
+    "refine-logs/FINAL_PROPOSAL.md reframed around measurement methodology",
+    "scripts/round4_launch.sh created for 1.5B + 14B cross-scale full-answer"
   ],
-  "round2_fixes_still_pending": [
-    "full_answer_scoring (000..999 AIME): reviewer's #1 ask — not yet implemented",
-    "calibration_sanity_report: top-label distribution, argmax entropy, lift vs null",
-    "denser_layer_coverage for delta (currently only [7,14,18,22,27])",
-    "minimum_cell_size guards in P3 decomposition",
-    "held-out validation of conditional-sigma finding"
+  "round3_key_findings": [
+    "Full-answer readout DRAMATICALLY cleaner: MATH500 dominant-label-frac 0.69 -> 0.24; AIME GT-dominance 0.23 -> 0.67.",
+    "Pre-registered σ/δ/P1/P2 signals do NOT survive full-answer readout.",
+    "MATH500 full-answer P3 inverts the hypothesis: ratio 0.594, bootstrap CI [0.38, 0.98], CI excludes 1 on wrong side — robust negative result.",
+    "AIME full-answer P3 bootstrap ratio 2.19 CI [1.28, 3.52] correct direction, but central cells n=2/28 (below guard)."
+  ],
+  "round3_reviewer_pivot": [
+    "Pivot to measurement-methodology paper. Headline: 'Single-token tuned-lens readouts create answer-prior artifacts; target-matched full-answer readouts remove the artifact and change the claimed link between latent answers and reasoning length.'",
+    "Core contribution = full-answer lens methodology + calibration sanity protocol.",
+    "MATH500 P3 inversion kept as exploratory, not headline.",
+    "De-promote P1/P2/P3 to diagnostic rows in a three-readout ablation table."
   ],
   "pending_experiments_on_gpu": [
-    "null-prompt calibration re-run on 7B (code ready, not yet executed)",
-    "full-answer scoring re-run on 7B (code not yet implemented)",
-    "MCQ benchmark (Knowlogic / CommonsenseQA subset)",
-    "1.5B + 14B replication (deprioritized until readout fixed)"
+    "1.5B cross-scale null + full-answer (AIME + MATH500)",
+    "14B cross-scale null + full-answer (AIME + MATH500)",
+    "OPTIONAL if budget: MCQ (Knowlogic) full-answer"
   ],
-  "next_action": "Implement full-answer scoring + calibration sanity report locally, commit, update round2_launch.sh, then user runs re-extraction on GPU. After: Round 3 codex-reply with threadId 019dac49-405f-7de0-bffd-6ed175dbcc4c.",
-  "timestamp": "2026-04-20T14:55:00"
+  "next_action": "User runs scripts/round4_launch.sh on GPU. After rsync back, Round 4 review via mcp__codex__codex (new thread expected — prior Round-3 thread 019db117 likely expires). Target score: >= 6 to pass positive threshold.",
+  "timestamp": "2026-04-21T13:40:00"
 }
